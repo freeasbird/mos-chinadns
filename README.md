@@ -1,6 +1,6 @@
 # mos-chinadns
 
-一个适用于中国的DNS解析器，实现DNS分流与防污染。参考[ChinaDNS](https://github.com/shadowsocks/ChinaDNS)。
+一个适用于中国的DNS解析器，实现DNS分流与防污染。
 
 ---
 
@@ -66,11 +66,11 @@
 
 ## 配置示例
 
-* 本地服务器：会被污染大陆服务器
-* 远程服务器：不会被污染的服务器
-* 本地服务器域名黑名单：会被污染的域名
-* 本地服务器IP白名单：中国大陆IP
-* 本地服务器IP黑名单：希望被屏蔽的IP，比如运营商的广告服务器IP
+* 本地服务器：一个低延时但会被污染大陆服务器
+* 远程服务器：一个不会被污染的服务器
+* 本地服务器域名黑名单：会被污染的域名列表
+* 本地服务器IP白名单：中国大陆IP列表，可以从[这里](https://github.com/LisonFan/china_ip_list)获得
+* 本地服务器IP黑名单：希望被屏蔽的IP列表，比如运营商的广告服务器IP
 
 ## Open Source Components / Libraries
 
