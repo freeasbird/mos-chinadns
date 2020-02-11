@@ -111,12 +111,6 @@ func buildConfig() *Config {
 	setIfNotNil(&c.UseTCP, useTCP)
 	setIfNotNil(&c.RemoteECSSubnet, remoteECSSubnet)
 
-	// check
-	switch {
-	case len(c.BindAddr) == 0 || len(c.LocalServer) == 0 || len(c.RemoteServer) == 0:
-		logrus.Fatalf("missing args")
-	}
-
 	return c
 }
 

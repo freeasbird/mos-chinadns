@@ -19,6 +19,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -52,6 +53,10 @@ const (
 
 func initDispather(conf *Config) (*dispatcher, error) {
 	d := new(dispatcher)
+
+	if len(conf.BindAddr) == 0 || len(conf.LocalServer) == 0 || len(conf.RemoteServer) == 0 {
+		return nil, errors.New("missing args: bind address or local server address or remote server address")
+	}
 	d.bindAddr = conf.BindAddr
 	d.localServer = conf.LocalServer
 	d.remoteServer = conf.RemoteServer
