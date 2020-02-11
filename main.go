@@ -49,9 +49,9 @@ func main() {
 	flag.Parse()
 
 	if *verbose {
-		logrus.SetLevel(logrus.ErrorLevel)
-	} else {
 		logrus.SetLevel(logrus.DebugLevel)
+	} else {
+		logrus.SetLevel(logrus.ErrorLevel)
 	}
 
 	//gen config
