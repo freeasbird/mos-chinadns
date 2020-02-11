@@ -26,6 +26,8 @@
             [地址:端口]远程服务器地址 (必需)
     -use-tcp string
             [l|r|l_r] 是否使用TCP协议。'l'表示仅本地服务器使用TCP, 'r'表示仅远程服务器使用TCP, 'l_r'表示都使用TCP
+    -remote-ecs-subnet
+            [CIDR格式IP段] 向远程服务器的请求将使用EDNS0的并附带包含有此地址的ESC信息
     -v    调试模式，更多的log输出
 
 使用方式请参考[配置示例](#配置示例)
@@ -39,15 +41,16 @@
 
 ## json配置文件模板
 
-    {
-        "bind_addr": "",
-        "local_server": "",
-        "remote_server": "",
-        "use_tcp": "",
-        "local_allowed_ip_list": "",
-        "local_blocked_ip_list": "",
-        "local_blocked_domain_list": ""
-    }
+        {
+                "bind_addr": "",
+                "local_server": "",
+                "remote_server": "",
+                "use_tcp": "",
+                "local_allowed_ip_list": "",
+                "local_blocked_ip_list": "",
+                "local_blocked_domain_list": "",
+                "remote_ecs_subnet": ""
+        }
 
 ## 域名黑名单
 

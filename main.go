@@ -42,6 +42,7 @@ var (
 	localAllowedIPList     = flag.String("local-allowed-ip", "", "a file that contains a list of IPs that should be allowed by local server")
 	localBlockedIPList     = flag.String("local-blocked-ip", "", "a file that contains a list of IPs that should be blocked by local server")
 	localBlockedDomainList = flag.String("local-blocked-domain", "", "a file that contains a list of regexp that should be blocked by local server")
+	remoteECSSubnet        = flag.String("remote-ecs-subnet", "", "a CIDR notation, EDNS client subnet")
 )
 
 func main() {
@@ -108,6 +109,7 @@ func buildConfig() *Config {
 	setIfNotNil(&c.LocalBlockedIPList, localBlockedIPList)
 	setIfNotNil(&c.LocalBlockedDomainList, localBlockedDomainList)
 	setIfNotNil(&c.UseTCP, useTCP)
+	setIfNotNil(&c.RemoteECSSubnet, remoteECSSubnet)
 
 	// check
 	switch {

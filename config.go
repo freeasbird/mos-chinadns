@@ -33,6 +33,7 @@ type Config struct {
 	LocalAllowedIPList     string `json:"local_allowed_ip_list"`
 	LocalBlockedIPList     string `json:"local_blocked_ip_list"`
 	LocalBlockedDomainList string `json:"local_blocked_domain_list"`
+	RemoteECSSubnet        string `json:"remote_ecs_subnet"`
 }
 
 func loadJSONConfig(configFile string) (*Config, error) {

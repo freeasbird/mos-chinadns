@@ -20,6 +20,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,6 +43,7 @@ type dispatcher struct {
 	localAllowedIPList     *ipv6.NetList
 	localBlockedIPList     *ipv6.NetList
 	localBlockedDomainList *regExpDomainList
+	remoteECS              *dns.EDNS0_SUBNET
 }
 
 const (
@@ -93,6 +97,46 @@ func initDispather(conf *Config) (*dispatcher, error) {
 			return nil, fmt.Errorf("failed to load block domain file, %w", err)
 		}
 		d.localBlockedDomainList = reList
+	}
+
+	if len(conf.RemoteECSSubnet) != 0 {
+
+		strs := strings.SplitN(conf.RemoteECSSubnet, "/", 2)
+		if len(strs) != 2 {
+			return nil, fmt.Errorf("invalid ECS address [%s], not a CIDR notation", conf.RemoteECSSubnet)
+		}
+
+		ip := net.ParseIP(strs[0])
+		if ip == nil {
+			return nil, fmt.Errorf("invalid ECS address [%s], invalid ip", conf.RemoteECSSubnet)
+		}
+		sourceNetmask, err := strconv.Atoi(strs[1])
+		if err != nil || sourceNetmask > 128 || sourceNetmask < 0 {
+			return nil, fmt.Errorf("invalid ECS address [%s], invalid net mask", conf.RemoteECSSubnet)
+		}
+
+		ednsSubnet := new(dns.EDNS0_SUBNET)
+		// edns family: https://www.iana.org/assignments/address-family-numbers/address-family-numbers.xhtml
+		// ipv4 = 1
+		// ipv6 = 2
+		if ip4 := ip.To4(); ip4 != nil {
+			ednsSubnet.Family = 1
+			ednsSubnet.SourceNetmask = uint8(sourceNetmask)
+			ip = ip4
+		} else {
+			if ip6 := ip.To16(); ip6 != nil {
+				ednsSubnet.Family = 2
+				ednsSubnet.SourceNetmask = uint8(sourceNetmask)
+				ip = ip6
+			} else {
+				return nil, fmt.Errorf("invalid ECS address [%s], it's not an ipv4 or ipv6 address", conf.RemoteECSSubnet)
+			}
+		}
+
+		ednsSubnet.Code = dns.EDNS0SUBNET
+		ednsSubnet.Address = ip
+		ednsSubnet.SourceScope = 0
+		d.remoteECS = ednsSubnet
 	}
 
 	return d, nil
@@ -210,7 +254,32 @@ func (d *dispatcher) queryLocal(ctx context.Context, q *dns.Msg) (*dns.Msg, time
 	return d.localClient.ExchangeContext(ctx, q, d.localServer)
 }
 
+//queryRemote WARNING: to save memory we may modify q directly.
 func (d *dispatcher) queryRemote(ctx context.Context, q *dns.Msg) (*dns.Msg, time.Duration, error) {
+	if d.remoteECS != nil {
+		opt := q.IsEdns0()
+		if opt == nil { // we need a new opt
+			o := new(dns.OPT)
+			o.SetUDPSize(2048) // TODO: is this big enough?
+			o.Hdr.Name = "."
+			o.Hdr.Rrtype = dns.TypeOPT
+			o.Option = []dns.EDNS0{d.remoteECS}
+			q.Extra = append(q.Extra, o)
+		} else {
+			var hasECS bool = false // check if msg q already has a ECS section
+			for o := range opt.Option {
+				if opt.Option[o].Option() == dns.EDNS0SUBNET {
+					hasECS = true
+					break
+				}
+			}
+
+			if !hasECS {
+				opt.Option = append(opt.Option, d.remoteECS)
+			}
+		}
+	}
+
 	return d.remoteClient.ExchangeContext(ctx, q, d.remoteServer)
 }
 
