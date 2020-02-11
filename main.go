@@ -29,20 +29,20 @@ import (
 )
 
 var (
-	configPath  = flag.String("c", "", "path to config file")
-	genConfigTo = flag.String("gen", "", "path to generate a config template")
+	configPath  = flag.String("c", "", "[path] load config from file")
+	genConfigTo = flag.String("gen", "", "[path] generate a config template here")
 
 	dir     = flag.String("dir", "", "change working directory")
 	verbose = flag.Bool("v", false, "more log")
 
-	bindAddr               = flag.String("b", "", "bind address")
-	localServer            = flag.String("local", "", "local dns server address")
-	remoteServer           = flag.String("remote", "", "remote dns server address")
-	useTCP                 = flag.String("use-tcp", "", "one of 'l','r', or 'l_r'. Means local only, remote only or local and remote")
-	localAllowedIPList     = flag.String("local-allowed-ip", "", "a file that contains a list of IPs that should be allowed by local server")
-	localBlockedIPList     = flag.String("local-blocked-ip", "", "a file that contains a list of IPs that should be blocked by local server")
-	localBlockedDomainList = flag.String("local-blocked-domain", "", "a file that contains a list of regexp that should be blocked by local server")
-	remoteECSSubnet        = flag.String("remote-ecs-subnet", "", "a CIDR notation, EDNS client subnet")
+	bindAddr               = flag.String("bind-addr", "", "[IP:port] bind address, e.g. '127.0.0.1:53'")
+	localServer            = flag.String("local-server", "", "[IP:port] local dns server address")
+	remoteServer           = flag.String("remote-server", "", "[IP:port] remote dns server address")
+	useTCP                 = flag.String("use-tcp", "", "[l|r|l_r] Means [only local| only remote| both local and remote] will use TCP insteadof UDP")
+	localAllowedIPList     = flag.String("local-allowed-ip-list", "", "[path] a file that contains a list of IPs that should be allowed by local server")
+	localBlockedIPList     = flag.String("local-blocked-ip-list", "", "[path] a file that contains a list of IPs that should be blocked by local server")
+	localBlockedDomainList = flag.String("local-blocked-domain-list", "", "[path] a file that contains a list of regexp that should be blocked by local server")
+	remoteECSSubnet        = flag.String("remote-ecs-subnet", "", "[CIDR notation] EDNS client subnet, e.g. '1.2.3.0/24'")
 )
 
 func main() {
