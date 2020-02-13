@@ -147,8 +147,8 @@ func initDispather(conf *Config) (*dispatcher, error) {
 	return d, nil
 }
 
-func (d *dispatcher) ListenAndServe() {
-	dns.ListenAndServe(d.bindAddr, "udp", d)
+func (d *dispatcher) ListenAndServe() error {
+	return dns.ListenAndServe(d.bindAddr, "udp", d)
 }
 
 // ServeDNS impliment the interface

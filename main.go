@@ -19,7 +19,6 @@ package main
 
 import (
 	"flag"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -59,9 +58,9 @@ func main() {
 		err := genJSONConfig(*genConfigTo)
 		if err != nil {
 			logrus.Errorf("can not generate config template, %v", err)
-			return
+		} else {
+			logrus.Print("config template generated")
 		}
-		logrus.Print("config template generated")
 		return
 	}
 
@@ -71,10 +70,10 @@ func main() {
 	}
 	dir, err := filepath.Abs(*dir)
 	if err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 	if err := os.Chdir(dir); err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 
 	d, err := initDispather(buildConfig())
@@ -82,7 +81,15 @@ func main() {
 		logrus.Fatal(err)
 	}
 
-	go d.ListenAndServe()
+	go func() {
+		logrus.Print("server started")
+		if err := d.ListenAndServe(); err != nil {
+			logrus.Fatalf("server exited with err: %v", err)
+		} else {
+			logrus.Print("server exited")
+			os.Exit(0)
+		}
+	}()
 
 	//wait signals
 	osSignals := make(chan os.Signal, 1)
