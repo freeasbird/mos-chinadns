@@ -80,10 +80,10 @@
 
 ## 无污染的服务器
 
-远程服务器(remote_server)必须为无污染服务器，如`8.8.8.8`, `1.1.1.1`。因为某些不可抗拒原因，在大陆使用UDP或TCP直连是肯定不行的。所以建议：
+远程服务器(remote_server)必须为无污染服务器，如`8.8.8.8`, `1.1.1.1`。因为某些不可抗拒原因，在大陆使用UDP或TCP直连是不稳定的。所以建议：
 
 * 用代理将请求转发
-* 在本地运行DoH或DoT客户端，比如[dnscrypt-proxy](https://github.com/DNSCrypt/dnscrypt-proxy)
+* 在本地运行DoH客户端，比如[mos-doh-client](https://github.com/IrineSistiana/mos-doh-client)
 
 ## Open Source Components / Libraries
 
