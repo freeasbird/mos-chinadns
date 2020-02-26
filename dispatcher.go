@@ -54,8 +54,12 @@ const (
 func initDispather(conf *Config) (*dispatcher, error) {
 	d := new(dispatcher)
 
-	if len(conf.BindAddr) == 0 || len(conf.LocalServer) == 0 || len(conf.RemoteServer) == 0 {
-		return nil, errors.New("missing args: bind address or local server address or remote server address")
+	if len(conf.BindAddr) == 0 {
+		return nil, errors.New("missing args: bind address")
+	}
+
+	if len(conf.LocalServer) == 0 && len(conf.RemoteServer) == 0 {
+		return nil, errors.New("missing args: no local server address and remote server address")
 	}
 	d.bindAddr = conf.BindAddr
 	d.localServer = conf.LocalServer
@@ -196,44 +200,49 @@ func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
 
 	wgChan := make(chan struct{}, 0)
 	wg := sync.WaitGroup{}
-	wg.Add(2) // local and remote
 
 	// local
-	go func() {
-		defer wg.Done()
-		res, rtt, err := d.queryLocal(ctx, q)
-		if err != nil {
-			requestLogger.Warnf("local server failed with err: %v", err)
-			return
-		}
-		requestLogger.Debugf("get reply from local server, rtt: %s", rtt)
+	if len(d.localServer) != 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			res, rtt, err := d.queryLocal(ctx, q)
+			if err != nil {
+				requestLogger.Warnf("local server failed with err: %v", err)
+				return
+			}
+			requestLogger.Debugf("get reply from local server, rtt: %s", rtt)
 
-		if d.dropLoaclRes(res, requestLogger) {
-			requestLogger.Debug("local result droped")
-			return
-		}
+			if d.dropLoaclRes(res, requestLogger) {
+				requestLogger.Debug("local result droped")
+				return
+			}
 
-		select {
-		case resChan <- res:
-		default:
-		}
-	}()
+			select {
+			case resChan <- res:
+			default:
+			}
+		}()
+	}
 
 	// remote
-	go func() {
-		defer wg.Done()
-		res, rtt, err := d.queryRemote(ctx, q)
-		if err != nil {
-			requestLogger.Warnf("remote server failed with err: %v", err)
-			return
-		}
-		requestLogger.Debugf("get reply from local server, rtt: %s", rtt)
+	if len(d.remoteServer) != 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			res, rtt, err := d.queryRemote(ctx, q)
+			if err != nil {
+				requestLogger.Warnf("remote server failed with err: %v", err)
+				return
+			}
+			requestLogger.Debugf("get reply from local server, rtt: %s", rtt)
 
-		select {
-		case resChan <- res:
-		default:
-		}
-	}()
+			select {
+			case resChan <- res:
+			default:
+			}
+		}()
+	}
 
 	// watcher
 	go func() {
