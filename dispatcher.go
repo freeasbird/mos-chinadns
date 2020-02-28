@@ -53,9 +53,42 @@ type dispatcher struct {
 }
 
 const (
-	queryTimeout    = time.Second * 2
+	queryTimeout    = time.Second * 3
 	dohQueryTimeout = time.Second * 3
 )
+
+var (
+	tp = timerPool{}
+)
+
+type timerPool struct {
+	sync.Pool
+}
+
+func getTimer(t time.Duration) *time.Timer {
+	timer, ok := tp.Get().(*time.Timer)
+	if !ok {
+		return time.NewTimer(t)
+	}
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	timer.Reset(t)
+	return timer
+}
+
+func releaseTimer(timer *time.Timer) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	tp.Put(timer)
+}
 
 func initDispather(conf *Config) (*dispatcher, error) {
 	d := new(dispatcher)
@@ -65,7 +98,7 @@ func initDispather(conf *Config) (*dispatcher, error) {
 	}
 
 	if len(conf.LocalServer) == 0 && len(conf.RemoteServer) == 0 {
-		return nil, errors.New("missing args: no local server address and remote server address")
+		return nil, errors.New("missing args: both local server and remote server are empty")
 	}
 	d.bindAddr = conf.BindAddr
 	d.localServer = conf.LocalServer
@@ -205,23 +238,27 @@ func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
 	wgChan := make(chan struct{}, 0)
 	wg := sync.WaitGroup{}
 	var localServerDone chan struct{}
+	var localServerFailed chan struct{}
 
 	// local
 	if len(d.localServer) != 0 {
 		localServerDone = make(chan struct{})
-
+		localServerFailed = make(chan struct{})
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			requestLogger.Debug("query local server")
 			res, rtt, err := d.queryLocal(ctx, q)
 			if err != nil {
 				requestLogger.Warnf("local server failed with err: %v", err)
+				close(localServerFailed)
 				return
 			}
-			requestLogger.Debugf("get reply from local server, rtt: %s", rtt)
 
+			requestLogger.Debugf("get reply from local server, rtt: %s", rtt)
 			if d.dropLoaclRes(res, requestLogger) {
 				requestLogger.Debug("local result droped")
+				close(localServerFailed)
 				return
 			}
 
@@ -239,14 +276,18 @@ func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
 		go func() {
 			defer wg.Done()
 
-			if localServerDone != nil && d.remoteServerDelayStart > 0 {
-				time.Sleep(d.remoteServerDelayStart)
+			if len(d.localServer) != 0 && d.remoteServerDelayStart > 0 {
+				timer := getTimer(d.remoteServerDelayStart)
+				defer releaseTimer(timer)
 				select {
 				case <-localServerDone:
 					return
-				default:
+				case <-localServerFailed:
+				case <-timer.C:
 				}
 			}
+
+			requestLogger.Debug("query remote server")
 			res, rtt, err := d.queryRemote(ctx, q)
 			if err != nil {
 				requestLogger.Warnf("remote server failed with err: %v", err)
@@ -276,7 +317,7 @@ func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
 		r.Rcode = dns.RcodeServerFailure
 		return r
 	case <-ctx.Done():
-		requestLogger.Debugf("query failed %v", ctx.Err())
+		requestLogger.Warnf("query failed %v", ctx.Err())
 		return nil
 	}
 }
@@ -377,7 +418,7 @@ func anwsersMatchNetList(anwser []dns.RR, list *ipv6.NetList) bool {
 				return true
 			}
 		default:
-			logrus.Warn("unknown answer type")
+			logrus.Debugf("unknown answer section [%s]", anwser[i])
 		}
 	}
 	return false
