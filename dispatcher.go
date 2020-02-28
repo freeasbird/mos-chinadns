@@ -212,7 +212,6 @@ func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
 
 		wg.Add(1)
 		go func() {
-			defer close(localServerDone)
 			defer wg.Done()
 			res, rtt, err := d.queryLocal(ctx, q)
 			if err != nil {
@@ -230,6 +229,7 @@ func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
 			case resChan <- res:
 			default:
 			}
+			close(localServerDone)
 		}()
 	}
 
