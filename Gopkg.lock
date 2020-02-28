@@ -2,6 +2,14 @@
 
 
 [[projects]]
+  branch = "master"
+  digest = "1:f7aa215410183f57aef588a0cad59331957211dad0b4375562a272f470b2b8f2"
+  name = "github.com/IrineSistiana/mos-doh-client"
+  packages = ["client"]
+  pruneopts = "UT"
+  revision = "6ac3c31daa334587e23e98ac9c29690e9d1fa2b8"
+
+[[projects]]
   digest = "1:f4b7d051caa5968d8e700a33fc254708c75cf86327b42e9db4cb8961a625cc46"
   name = "github.com/IrineSistiana/mosdns"
   packages = ["core/ipv6"]
@@ -16,6 +24,18 @@
   pruneopts = "UT"
   revision = "839c75faf7f98a33d445d181f3018b5c3409a45e"
   version = "v1.4.2"
+
+[[projects]]
+  digest = "1:e5e0d775194850f7f06c78f51015ec7c85a59a62613d1ad9847b5ba0f2a021c8"
+  name = "github.com/klauspost/compress"
+  packages = [
+    "flate",
+    "gzip",
+    "zlib",
+  ]
+  pruneopts = "UT"
+  revision = "d4b3bb13d45b000ac3a915d4f32069a9284540bb"
+  version = "v1.10.2"
 
 [[projects]]
   digest = "1:31e761d97c76151dde79e9d28964a812c46efc5baee4085b86f68f0c654450de"
@@ -34,6 +54,26 @@
   version = "v1.1.27"
 
 [[projects]]
+  digest = "1:c468422f334a6b46a19448ad59aaffdfc0a36b08fdcc1c749a0b29b6453d7e59"
+  name = "github.com/valyala/bytebufferpool"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "e746df99fe4a3986f4d4f79e13c1e0117ce9c2f7"
+  version = "v1.0.0"
+
+[[projects]]
+  digest = "1:15ad8a80098fcc7a194b9db6b26d74072a852e4faa957848c8118193d3c69230"
+  name = "github.com/valyala/fasthttp"
+  packages = [
+    ".",
+    "fasthttputil",
+    "stackless",
+  ]
+  pruneopts = "UT"
+  revision = "e5f51c11919d4f66400334047b897ef0a94c6f3c"
+  version = "v20180529"
+
+[[projects]]
   branch = "master"
   digest = "1:cd7e85fc3687e062714febdee3e8efeb00a413a2a620d28908fd0258261d2353"
   name = "golang.org/x/crypto"
@@ -42,11 +82,11 @@
     "ed25519/internal/edwards25519",
   ]
   pruneopts = "UT"
-  revision = "ecb85df213405b7d32e4d73cb5bbaace2ec88881"
+  revision = "2aa609cf4a9d7d1126360de73b55b6002f9e052a"
 
 [[projects]]
   branch = "master"
-  digest = "1:7182ef5a2af56ca8c788b291e7f9926b85c354eb0a93bc5a57ce19c99e42d74f"
+  digest = "1:a342b35551fa09b905a09cc3964bcfca537292ea5cc8993de0e02c9ed12a49a7"
   name = "golang.org/x/net"
   packages = [
     "bpf",
@@ -56,22 +96,22 @@
     "ipv6",
   ]
   pruneopts = "UT"
-  revision = "16171245cfb220d5317888b716d69c1fb4e7992b"
+  revision = "0de0cce0169b09b364e001f108dc0399ea8630b3"
 
 [[projects]]
   branch = "master"
-  digest = "1:b40521580b68b3cd78f87d1820116ba94090f426b7da3c4e3124e874e1f431dd"
+  digest = "1:e6f3eca022d18ff28112534a46d8bad7400b1523724061dff2d1bfc737bee376"
   name = "golang.org/x/sys"
   packages = [
     "unix",
     "windows",
   ]
   pruneopts = "UT"
-  revision = "d101bd2416d505c0448a6ce8a282482678040a89"
+  revision = "d5e6a3e2c0ae16fc7480523ebcb7fd4dd3215489"
 
 [[projects]]
   branch = "master"
-  digest = "1:060d05e6f50db04025a7e6bc5edc3d2f8a6255280e295da61473d966a6884a59"
+  digest = "1:f9ba5fb54c319c57b47a6302d88b642025c9f4263551a4c951dc90daf0531a45"
   name = "golang.org/x/tools"
   packages = [
     "go/ast/astutil",
@@ -80,15 +120,17 @@
     "go/internal/packagesdriver",
     "go/packages",
     "go/types/typeutil",
+    "internal/gocommand",
     "internal/packagesinternal",
   ]
   pruneopts = "UT"
-  revision = "61798d64f0258df3b7b6e3667997eaebec9c0d99"
+  revision = "706bc42d1f0d6e520b893595825c475de0fea824"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/IrineSistiana/mos-doh-client/client",
     "github.com/IrineSistiana/mosdns/core/ipv6",
     "github.com/Sirupsen/logrus",
     "github.com/miekg/dns",

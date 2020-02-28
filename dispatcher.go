@@ -27,6 +27,8 @@ import (
 	"sync"
 	"time"
 
+	dohClient "github.com/IrineSistiana/mos-doh-client/client"
+
 	"github.com/miekg/dns"
 
 	"github.com/IrineSistiana/mosdns/core/ipv6"
@@ -34,12 +36,15 @@ import (
 )
 
 type dispatcher struct {
-	bindAddr     string
-	localServer  string
-	remoteServer string
+	bindAddr               string
+	localServer            string
+	remoteServer           string
+	remoteServerDelayStart time.Duration
 
 	localClient  dns.Client
 	remoteClient dns.Client
+
+	remoteDoHClient *dohClient.DohClient
 
 	localAllowedIPList     *ipv6.NetList
 	localBlockedIPList     *ipv6.NetList
@@ -48,7 +53,8 @@ type dispatcher struct {
 }
 
 const (
-	queryTimeout = time.Second * 2
+	queryTimeout    = time.Second * 2
+	dohQueryTimeout = time.Second * 3
 )
 
 func initDispather(conf *Config) (*dispatcher, error) {
@@ -66,22 +72,21 @@ func initDispather(conf *Config) (*dispatcher, error) {
 	d.remoteServer = conf.RemoteServer
 
 	d.localClient = dns.Client{
+		Net:            "udp",
 		SingleInflight: false,
 	}
 	d.remoteClient = dns.Client{
+		Net:            "udp",
 		SingleInflight: false,
 	}
-	switch conf.UseTCP {
-	case "l":
-		d.localClient.Net = "tcp"
-	case "r":
-		d.remoteClient.Net = "tcp"
-	case "l_r":
-		d.localClient.Net = "tcp"
-		d.remoteClient.Net = "tcp"
-	case "":
-	default:
-		logrus.Warnf("unknown mode [%s], use udp by default", conf.UseTCP)
+
+	if conf.RemoteServerDelayStart > 0 {
+		d.remoteServerDelayStart = time.Millisecond * time.Duration(conf.RemoteServerDelayStart)
+	}
+
+	if len(conf.RemoteServerURL) != 0 && len(conf.RemoteServer) != 0 {
+		logrus.Info("enable DoH")
+		d.remoteDoHClient = dohClient.NewClient(conf.RemoteServerURL, conf.RemoteServer, conf.RemoteServerSkipVerify, 2048, dohQueryTimeout)
 	}
 
 	if len(conf.LocalAllowedIPList) != 0 {
@@ -197,14 +202,17 @@ func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
 	}
 
 	resChan := make(chan *dns.Msg, 1)
-
 	wgChan := make(chan struct{}, 0)
 	wg := sync.WaitGroup{}
+	var localServerDone chan struct{}
 
 	// local
 	if len(d.localServer) != 0 {
+		localServerDone = make(chan struct{})
+
 		wg.Add(1)
 		go func() {
+			defer close(localServerDone)
 			defer wg.Done()
 			res, rtt, err := d.queryLocal(ctx, q)
 			if err != nil {
@@ -230,12 +238,21 @@ func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
+			if localServerDone != nil && d.remoteServerDelayStart > 0 {
+				time.Sleep(d.remoteServerDelayStart)
+				select {
+				case <-localServerDone:
+					return
+				default:
+				}
+			}
 			res, rtt, err := d.queryRemote(ctx, q)
 			if err != nil {
 				requestLogger.Warnf("remote server failed with err: %v", err)
 				return
 			}
-			requestLogger.Debugf("get reply from local server, rtt: %s", rtt)
+			requestLogger.Debugf("get reply from remote server, rtt: %s", rtt)
 
 			select {
 			case resChan <- res:
@@ -292,6 +309,12 @@ func (d *dispatcher) queryRemote(ctx context.Context, q *dns.Msg) (*dns.Msg, tim
 				opt.Option = append(opt.Option, d.remoteECS)
 			}
 		}
+	}
+
+	if d.remoteDoHClient != nil {
+		t := time.Now()
+		r, err := d.remoteDoHClient.Exchange(q)
+		return r, time.Since(t), err
 	}
 
 	return d.remoteClient.ExchangeContext(ctx, q, d.remoteServer)

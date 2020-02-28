@@ -25,10 +25,12 @@ import (
 
 // Config is config
 type Config struct {
-	BindAddr     string `json:"bind_addr"`
-	LocalServer  string `json:"local_server"`
-	RemoteServer string `json:"remote_server"`
-	UseTCP       string `json:"use_tcp"`
+	BindAddr               string `json:"bind_addr"`
+	LocalServer            string `json:"local_server"`
+	RemoteServer           string `json:"remote_server"`
+	RemoteServerURL        string `json:"remote_server_url"`
+	RemoteServerSkipVerify bool   `json:"remote_server_skip_verify"`
+	RemoteServerDelayStart int    `json:"remote_server_delay_start"`
 
 	LocalAllowedIPList     string `json:"local_allowed_ip_list"`
 	LocalBlockedIPList     string `json:"local_blocked_ip_list"`

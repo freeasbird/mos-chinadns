@@ -31,17 +31,17 @@ var (
 	configPath  = flag.String("c", "", "[path] load config from file")
 	genConfigTo = flag.String("gen", "", "[path] generate a config template here")
 
-	dir     = flag.String("dir", "", "change working directory")
+	dir     = flag.String("dir", "", "[path] change working directory to here")
 	verbose = flag.Bool("v", false, "more log")
 
-	bindAddr               = flag.String("bind-addr", "", "[IP:port] bind address, e.g. '127.0.0.1:53'")
-	localServer            = flag.String("local-server", "", "[IP:port] local dns server address")
-	remoteServer           = flag.String("remote-server", "", "[IP:port] remote dns server address")
-	useTCP                 = flag.String("use-tcp", "", "[l|r|l_r] Means [only local| only remote| both local and remote] will use TCP insteadof UDP")
-	localAllowedIPList     = flag.String("local-allowed-ip-list", "", "[path] a file that contains a list of IPs that should be allowed by local server")
-	localBlockedIPList     = flag.String("local-blocked-ip-list", "", "[path] a file that contains a list of IPs that should be blocked by local server")
-	localBlockedDomainList = flag.String("local-blocked-domain-list", "", "[path] a file that contains a list of regexp that should be blocked by local server")
-	remoteECSSubnet        = flag.String("remote-ecs-subnet", "", "[CIDR notation] EDNS client subnet, e.g. '1.2.3.0/24'")
+	// bindAddr               = flag.String("bind-addr", "", "[IP:port] bind address, e.g. '127.0.0.1:53'")
+	// localServer            = flag.String("local-server", "", "[IP:port] local dns server address")
+	// remoteServer           = flag.String("remote-server", "", "[IP:port] remote dns server address")
+	// useTCP                 = flag.String("use-tcp", "", "[l|r|l_r] Means [only local| only remote| both local and remote] will use TCP insteadof UDP")
+	// localAllowedIPList     = flag.String("local-allowed-ip-list", "", "[path] a file that contains a list of IPs that should be allowed by local server")
+	// localBlockedIPList     = flag.String("local-blocked-ip-list", "", "[path] a file that contains a list of IPs that should be blocked by local server")
+	// localBlockedDomainList = flag.String("local-blocked-domain-list", "", "[path] a file that contains a list of regexp that should be blocked by local server")
+	// remoteECSSubnet        = flag.String("remote-ecs-subnet", "", "[CIDR notation] EDNS client subnet, e.g. '1.2.3.0/24'")
 )
 
 func main() {
@@ -76,7 +76,13 @@ func main() {
 		logrus.Fatal(err)
 	}
 
-	d, err := initDispather(buildConfig())
+	//checking
+
+	if len(*configPath) == 0 {
+		logrus.Fatal("need a config file")
+	}
+
+	d, err := initDispather(getConfigOrFatal())
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -99,31 +105,10 @@ func main() {
 	os.Exit(0)
 }
 
-func buildConfig() *Config {
-	c := new(Config)
-	if len(*configPath) != 0 {
-		c2, err := loadJSONConfig(*configPath)
-		if err != nil {
-			logrus.Fatalf("can not load config file, %v", err)
-		}
-		c = c2
+func getConfigOrFatal() *Config {
+	c, err := loadJSONConfig(*configPath)
+	if err != nil {
+		logrus.Fatalf("can not load config file, %v", err)
 	}
-
-	setIfNotNil(&c.BindAddr, bindAddr)
-	setIfNotNil(&c.LocalServer, localServer)
-	setIfNotNil(&c.RemoteServer, remoteServer)
-	setIfNotNil(&c.LocalAllowedIPList, localAllowedIPList)
-	setIfNotNil(&c.LocalBlockedIPList, localBlockedIPList)
-	setIfNotNil(&c.LocalBlockedDomainList, localBlockedDomainList)
-	setIfNotNil(&c.UseTCP, useTCP)
-	setIfNotNil(&c.RemoteECSSubnet, remoteECSSubnet)
-
 	return c
-}
-
-func setIfNotNil(dst *string, src *string) {
-	if src == nil || len(*src) == 0 {
-		return
-	}
-	*dst = *src
 }
