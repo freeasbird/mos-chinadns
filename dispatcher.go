@@ -377,13 +377,13 @@ func (d *dispatcher) dropLoaclRes(res *dns.Msg, requestLogger *logrus.Entry) boo
 		return true
 	}
 
-	if anwsersMatchNetList(res.Answer, d.localBlockedIPList) {
+	if anwsersMatchNetList(res.Answer, d.localBlockedIPList, requestLogger) {
 		requestLogger.Debug("local result is blocked")
 		return true
 	}
 
 	if d.localAllowedIPList != nil {
-		if anwsersMatchNetList(res.Answer, d.localAllowedIPList) {
+		if anwsersMatchNetList(res.Answer, d.localAllowedIPList, requestLogger) {
 			requestLogger.Debug("local result is alloweded")
 			return false
 		}
@@ -394,7 +394,7 @@ func (d *dispatcher) dropLoaclRes(res *dns.Msg, requestLogger *logrus.Entry) boo
 	return false
 }
 
-func anwsersMatchNetList(anwser []dns.RR, list *ipv6.NetList) bool {
+func anwsersMatchNetList(anwser []dns.RR, list *ipv6.NetList, requestLogger *logrus.Entry) bool {
 	if list == nil {
 		return false
 	}
@@ -418,7 +418,7 @@ func anwsersMatchNetList(anwser []dns.RR, list *ipv6.NetList) bool {
 				return true
 			}
 		default:
-			logrus.Debugf("unknown answer section [%s]", anwser[i])
+			requestLogger.Debugf("unknown answer section [%s]", anwser[i])
 		}
 	}
 	return false

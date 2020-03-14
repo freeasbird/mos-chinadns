@@ -4,6 +4,19 @@
 
 ---
 
+- [mos-chinadns](#mos-chinadns)
+  - [命令帮助](#命令帮助)
+  - [配置文件说明](#配置文件说明)
+    - [关于EDNS Client Subnet (ECS)](#关于edns-client-subnet-ecs)
+    - [关于DNS-over-HTTPS (DoH)](#关于dns-over-https-doh)
+    - [关于文件路径](#关于文件路径)
+  - [预设配置](#预设配置)
+    - [大陆通用 按IP分流](#大陆通用-按ip分流)
+    - [大陆通用 按IP分流 远程服务器使用DoH](#大陆通用-按ip分流-远程服务器使用doh)
+    - [单DoH模式](#单doh模式)
+  - [关于黑白名单](#关于黑白名单)
+  - [Open Source Components / Libraries](#open-source-components--libraries)
+
 ## 命令帮助
 
     -c string
@@ -11,62 +24,129 @@
     -gen string
             [路径]生成一个json配置文件模板至该路径
     -dir string
-            [路径]变更程序的工作目录
+            [路径]变更程序的工作目录。默认使用程序所在的目录
 
     -v    调试模式，更多的log输出
 
-使用方式请参考[配置示例](#配置示例)
-
-## 配置示例
-
-如果不清楚如何配置，以下是一种常用的防污染与分流配置：
-
-*下文的`必需`表示该参数这个分流方案的必要参数，不表示是程序的必要参数*
-
-* 监听地址(bind_addr)(必需)：按需设置。
-* 本地服务器(local-server)(必需)：一个低延时但会被污染大陆服务器，用于解析大陆域名。比如阿里DNS 223.5.5.5。
-* 远程服务器(remote-server)(必需)：一个无污染的服务器。用于解析非大陆域名。比如OpenDNS的非常规端口 208.67.222.222:443。
-* 本地服务器IP白名单(local-allowed-ip-list)(必需)：中国大陆IP列表，用于区别大陆与非大陆结果。最新的列表可以从[这里](https://github.com/LisonFan/china_ip_list)获得。
-* 本地服务器域名黑名单(local-blocked-domain-list)(非必需)：强制这些域名用远程服务器解析。用于强制打开这些域名的国外版而非中国版。
-* 本地服务器IP黑名单(local-blocked-ip-list)(非必需)：希望被屏蔽的IP列表，比如运营商的广告服务器IP。
-
-**json配置文件模板**
+## 配置文件说明
 
 *直接复制使用需先去掉注释*
 
     {
-        "bind_addr": "127.0.0.1:53",            // IP:端口
-        "local_server": "223.5.5.5:53",         // IP:端口
-        "remote_server": "208.67.222.222:443",  // IP:端口
-        "remote_server_url": "",                // URL
-        "remote_server_skip_verify": false,     // ture 或 false
-        "remote_server_delay_start": 0,         // 整数 单位毫秒
-        "local_allowed_ip_list": "/path/to/your/chn/ip/list",
-        "local_blocked_ip_list": "",            // 路径
-        "local_blocked_domain_list": "",        // 路径
-        "remote_ecs_subnet": ""                 // CIDR 如：1.2.3.0/24
+        // [IP:端口][必需] 监听地址
+        "bind_addr": "127.0.0.1:53", 
+
+        // [IP:端口] 本地服务器地址 建议:一个低延时但会被污染大陆服务器，用于解析大陆域名。
+        "local_server": "223.5.5.5:53",     
+
+        // [IP:端口] 远程服务器地址 建议:一个无污染的服务器。用于解析非大陆域名。    
+        "remote_server": "8.8.8.8:443", 
+
+        // [URL] DoH服务器的url，如果填入，远程服务器将使用DoH协议
+        "remote_server_url": "https://dns.google/dns-query",  
+
+        // [bool] 是否跳过验证DoH服务器身份 高危选项，会破坏DoH的安全性
+        "remote_server_skip_verify": false, 
+
+        // [int] 单位毫秒 远程服务器延时启动时间
+        // 如果在设定时间(单位毫秒)后local_server无响应，则开始请求remote_server。
+        // 如果local_server延时较低，将该值设定为120%的local_server的延时可显著降低请求remote_server的次数。
+        // 0表示禁用延时，请求将同时发送。
+        "remote_server_delay_start": 0, 
+
+        // [路径] 本地服务器IP白名单 建议:中国大陆IP列表，用于区别大陆与非大陆结果。
+        "local_allowed_ip_list": "/path/to/your/chn/ip/list", 
+
+        // [路径] 本地服务器IP黑名单 建议:希望被屏蔽的IP列表，比如运营商的广告服务器IP。
+        "local_blocked_ip_list": "/path/to/your/black/ip/list",
+
+        // [路径] 本地服务器域名黑名单 建议:希望强制打开国外版而非中国版的域名。
+        "local_blocked_domain_list": "/path/to/your/domain/list",
+
+        // [CIDR] EDNS Client Subnet 
+        "remote_ecs_subnet": "1.2.3.0/24"
     }
 
-远程服务器(remote-server)支持DoH，只需将服务器IP地址填入`remote_server`，URL填入`remote_server_url`。
+### 关于EDNS Client Subnet (ECS)
 
-如使用[Google 的 DNS over Https](https://developers.google.com/speed/public-dns/docs/doh)，只需填入：
+`remote_ecs_subnet` 填入自己的IP段即可启用ECS。如不详请务必留空。
 
-    ...
-    "remote_server": "8.8.8.8:443",
-    "remote_server_url": "https://dns.google/dns-query",
-    ...
+启用ECS最简单的方法:
 
-**其他非必要选项说明**
+- 百度搜索`IP`，得到自己的IP地址，如`1.2.3.4`
+- 将最后一位变`0`，并加上`/24`。如`1.2.3.4`变`1.2.3.0/24`
+- 将`1.2.3.0/24`填入`remote_ecs_subnet`
 
-* remote_server_skip_verify: 跳过DoH服务器身份验证。**高危选项，会破坏DoH的安全性，仅在知道自己在干什么的情况下启用**
-* remote_server_delay_start: 如果在设定时间(单位毫秒)后local_server无响应，则开始请求remote_server。将该值设定为local_server的延时可显著降低请求remote_server的次数。0表示将同时发送请求。
-* remote_ecs_subnet: 关于ECS作用请参考[EDNS Client Subnet](https://tools.ietf.org/html/rfc7871)。**仅少数DNS服务商提供ECS支持**
+更多ECS资料请参考rfc文档：[EDNS Client Subnet](https://tools.ietf.org/html/rfc7871)
 
-**其他使用方式**
+### 关于DNS-over-HTTPS (DoH)
 
-* 仅指定`remote_server`。当作普通带ECS的DoH客户端使用
+填入同时填入`remote_server`和`remote_server_url`即可启用DoH模式。请求方式为[RFC 8484](https://tools.ietf.org/html/rfc8484) GET。
 
-## 本地服务器黑白名单
+想了解有那些服务器支持DoH，请参阅[维基百科公共域名解析服务列表](https://en.wikipedia.org/wiki/Public_recursive_name_server)。
+
+### 关于文件路径
+
+如遇到相对路径(`-c`和json配置文件中的`[路径]`)，mos-chinadns会以**程序所在目录**作为工作路径。除非启动程序时用`-dir`指明。
+
+## 预设配置
+
+一份最新的中国大陆IPv4与IPv6的地址表`chn.list`已包含在release的zip包中。
+
+### 大陆通用 按IP分流
+
+国内：阿里云DNS  国际：OpenDNS非常规端口443
+
+    {
+        "bind_addr": "127.0.0.1:53",
+        "local_server": "223.5.5.5:53",
+        "remote_server": "208.67.222.222:443",
+        "remote_server_url": "",
+        "remote_server_skip_verify": false,
+        "remote_server_delay_start": 0,
+        "local_allowed_ip_list": "./chn.list",
+        "local_blocked_ip_list": "",
+        "local_blocked_domain_list": "",
+        "remote_ecs_subnet": ""
+    }
+
+### 大陆通用 按IP分流 远程服务器使用DoH
+
+国内：阿里云DNS 国际：[Google DoH](https://developers.google.com/speed/public-dns/docs/doh)
+
+    {
+        "bind_addr": "127.0.0.1:53",
+        "local_server": "223.5.5.5:53",
+        "remote_server": "8.8.8.8:443",
+        "remote_server_url": "https://dns.google/dns-query",
+        "remote_server_skip_verify": false,
+        "remote_server_delay_start": 0,
+        "local_allowed_ip_list": "./chn.list",
+        "local_blocked_ip_list": "",
+        "local_blocked_domain_list": "",
+        "remote_ecs_subnet": ""
+    }
+
+### 单DoH模式
+
+- 国际：[Google DoH](https://developers.google.com/speed/public-dns/docs/doh)
+
+建议ECS使解析更精确。[如何启用?](#关于edns-client-subnet-ecs)
+
+    {
+        "bind_addr": "127.0.0.1:53",
+        "local_server": "",
+        "remote_server": "8.8.8.8:443",
+        "remote_server_url": "https://dns.google/dns-query",
+        "remote_server_skip_verify": false,
+        "remote_server_delay_start": 0,
+        "local_allowed_ip_list": "",
+        "local_blocked_ip_list": "",
+        "local_blocked_domain_list": "",
+        "remote_ecs_subnet": ""
+    }
+
+## 关于黑白名单
 
 **工作流程**
 
