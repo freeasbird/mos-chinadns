@@ -14,6 +14,7 @@
     - [大陆通用 按IP分流](#大陆通用-按ip分流)
     - [大陆通用 按IP分流 远程服务器使用DoH](#大陆通用-按ip分流-远程服务器使用doh)
     - [单DoH模式](#单doh模式)
+  - [分流效果](#分流效果)
   - [关于黑白名单](#关于黑白名单)
   - [Open Source Components / Libraries](#open-source-components--libraries)
 
@@ -159,6 +160,67 @@
         "local_blocked_domain_list": "",
         "remote_ecs_subnet": ""
     }
+
+## 分流效果
+
+国内域名交由`local_server`解析，无格外延时。国外域名将会由`remote_server`解析，确保无污染。
+
+<details><summary><code>dig www.baidu.com 演示</code></summary><br>
+
+    ubuntu@ubuntu:~$ dig www.baidu.com @192.168.1.1 -p5455
+
+    ; <<>> DiG 9.11.3-1ubuntu1.11-Ubuntu <<>> www.baidu.com @192.168.1.1 -p5455
+    ;; global options: +cmd
+    ;; Got answer:
+    ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 57335
+    ;; flags: qr rd ra; QUERY: 1, ANSWER: 3, AUTHORITY: 0, ADDITIONAL: 1
+
+    ;; OPT PSEUDOSECTION:
+    ; EDNS: version: 0, flags:; udp: 4096
+    ;; QUESTION SECTION:
+    ;www.baidu.com.			IN	A
+
+    ;; ANSWER SECTION:
+    www.baidu.com.		561	IN	CNAME	www.a.shifen.com.
+    www.a.shifen.com.	250	IN	A	36.152.44.96
+    www.a.shifen.com.	250	IN	A	36.152.44.95
+
+    ;; Query time: 4 msec
+    ;; SERVER: 192.168.1.1#5455(192.168.1.1)
+    ;; WHEN: Sun Mar 15 18:17:55 PDT 2020
+    ;; MSG SIZE  rcvd: 149
+
+</details>
+
+<details><summary><code>dig www.google.com 演示</code></summary><br>
+
+    ubuntu@ubuntu:~$ dig www.google.com @192.168.1.1 -p5455
+
+    ; <<>> DiG 9.11.3-1ubuntu1.11-Ubuntu <<>> www.google.com @192.168.1.1 -p5455
+    ;; global options: +cmd
+    ;; Got answer:
+    ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 2719
+    ;; flags: qr rd ra; QUERY: 1, ANSWER: 6, AUTHORITY: 0, ADDITIONAL: 1
+
+    ;; OPT PSEUDOSECTION:
+    ; EDNS: version: 0, flags:; udp: 512
+    ;; QUESTION SECTION:
+    ;www.google.com.			IN	A
+
+    ;; ANSWER SECTION:
+    www.google.com.		280	IN	A	74.125.68.99
+    www.google.com.		280	IN	A	74.125.68.105
+    www.google.com.		280	IN	A	74.125.68.104
+    www.google.com.		280	IN	A	74.125.68.103
+    www.google.com.		280	IN	A	74.125.68.106
+    www.google.com.		280	IN	A	74.125.68.147
+
+    ;; Query time: 72 msec
+    ;; SERVER: 192.168.1.1#5455(192.168.1.1)
+    ;; WHEN: Sun Mar 15 18:19:20 PDT 2020
+    ;; MSG SIZE  rcvd: 223
+
+</details>
 
 ## 关于黑白名单
 
