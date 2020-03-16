@@ -27,6 +27,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IrineSistiana/mos-chinadns/domainlist"
+
 	dohClient "github.com/IrineSistiana/mos-doh-client/client"
 
 	"github.com/miekg/dns"
@@ -48,7 +50,8 @@ type dispatcher struct {
 
 	localAllowedIPList     *ipv6.NetList
 	localBlockedIPList     *ipv6.NetList
-	localBlockedDomainList *regExpDomainList
+	localAllowedDomainList *domainlist.List
+	localBlockedDomainList *domainlist.List
 	remoteECS              *dns.EDNS0_SUBNET
 
 	entry *logrus.Entry
@@ -140,19 +143,28 @@ func initDispather(conf *Config, entry *logrus.Entry) (*dispatcher, error) {
 	if len(conf.LocalBlockedIPList) != 0 {
 		blockIPList, err := ipv6.NewNetListFromFile(conf.LocalBlockedIPList)
 		if err != nil {
-			return nil, fmt.Errorf("initDispather: failed to load block ip file, %w", err)
+			return nil, fmt.Errorf("initDispather: failed to load blocked ip file, %w", err)
 		}
 		d.entry.Infof("initDispather: LocalBlockedIPList length %d", blockIPList.Len())
 		d.localBlockedIPList = blockIPList
 	}
 
-	if len(conf.LocalBlockedDomainList) != 0 {
-		reList, err := loadRegExpDomainListFormFile(conf.LocalBlockedDomainList)
+	if len(conf.LocalForcedDomainList) != 0 {
+		dl, err := domainlist.LoadFormFile(conf.LocalForcedDomainList)
 		if err != nil {
-			return nil, fmt.Errorf("initDispather: failed to load block domain file, %w", err)
+			return nil, fmt.Errorf("initDispather: failed to load forced domain file, %w", err)
 		}
-		d.entry.Infof("initDispather: LocalBlockedDomainList length %d", reList.len())
-		d.localBlockedDomainList = reList
+		d.entry.Infof("initDispather: LocalForcedDomainList length %d", dl.Len())
+		d.localAllowedDomainList = dl
+	}
+
+	if len(conf.LocalBlockedDomainList) != 0 {
+		dl, err := domainlist.LoadFormFile(conf.LocalBlockedDomainList)
+		if err != nil {
+			return nil, fmt.Errorf("initDispather: failed to load blocked domain file, %w", err)
+		}
+		d.entry.Infof("initDispather: LocalBlockedDomainList length %d", dl.Len())
+		d.localBlockedDomainList = dl
 	}
 
 	if len(conf.RemoteECSSubnet) != 0 {
@@ -215,12 +227,12 @@ func isUnusualType(q *dns.Msg) bool {
 }
 
 // check if q has a blocked QName. If q and reList is nil, return false.
-func isBlockedDomain(q *dns.Msg, reList *regExpDomainList) bool {
-	if reList == nil || q == nil {
+func inDomainList(q *dns.Msg, l *domainlist.List) bool {
+	if l == nil || q == nil {
 		return false
 	}
 	for i := range q.Question {
-		if reList.match(q.Question[i].Name) {
+		if l.Has(q.Question[i].Name) {
 			return true
 		}
 	}
@@ -242,9 +254,43 @@ func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
 		"question": q.Question,
 	})
 
+	localOnly := inDomainList(q, d.localAllowedDomainList)
+	if localOnly {
+		requestLogger.Debug("serveDNS: is forced domain")
+	}
+	localBlocked := inDomainList(q, d.localBlockedDomainList)
+	if localBlocked {
+		requestLogger.Debug("serveDNS: is blocked domain")
+	}
+
 	var doLocal, doRemote bool
-	doLocal = d.hasLocal() && !isBlockedDomain(q, d.localBlockedDomainList) && (!isUnusualType(q) || !d.localServerBlockUnusualType)
-	doRemote = d.hasRemote()
+	if d.hasLocal() {
+		switch {
+		case localOnly:
+			doLocal = true
+		case localBlocked:
+			doLocal = false
+		case isUnusualType(q):
+			doLocal = !d.localServerBlockUnusualType
+		default:
+			doLocal = true
+		}
+	} else {
+		doLocal = false
+	}
+
+	if d.hasRemote() {
+		switch {
+		case localOnly:
+			doRemote = false
+		case localBlocked:
+			doRemote = true
+		default:
+			doRemote = true
+		}
+	} else {
+		doRemote = false
+	}
 
 	ctx, cancelQuery := context.WithTimeout(context.Background(), queryTimeout)
 	defer cancelQuery()
@@ -271,7 +317,7 @@ func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
 			}
 
 			requestLogger.Debugf("serveDNS: get reply from local, rtt: %dms", rtt.Milliseconds())
-			if d.dropLoaclRes(res, requestLogger) {
+			if !localOnly && d.dropLoaclRes(res, requestLogger) {
 				requestLogger.Debug("serveDNS: local result droped")
 				close(localServerFailed)
 				return

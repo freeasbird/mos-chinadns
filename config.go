@@ -35,6 +35,7 @@ type Config struct {
 
 	LocalAllowedIPList     string `json:"local_allowed_ip_list"`
 	LocalBlockedIPList     string `json:"local_blocked_ip_list"`
+	LocalForcedDomainList  string `json:"local_forced_domain_list"`
 	LocalBlockedDomainList string `json:"local_blocked_domain_list"`
 	RemoteECSSubnet        string `json:"remote_ecs_subnet"`
 }

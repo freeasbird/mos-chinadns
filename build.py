@@ -15,7 +15,7 @@ env_combinations = [[['GOOS', 'darwin'], ['GOARCH', 'amd64']],
                     # [['GOOS', 'linux'], ['GOARCH', '386']],
                     [['GOOS', 'linux'], ['GOARCH', 'amd64']],
 
-                    # [['GOOS', 'linux'], ['GOARCH', 'arm'], ['GOARM', '7']],
+                    [['GOOS', 'linux'], ['GOARCH', 'arm'], ['GOARM', '7']],
                     [['GOOS', 'linux'], ['GOARCH', 'arm64']],
 
                     # [['GOOS', 'linux'], ['GOARCH', 'mips'], ['GOMIPS', 'hardfloat']],
@@ -93,6 +93,7 @@ def go_build():
                 zf.write('README.md')
                 zf.write('config-example.json')
                 zf.write('chn.list')
+                zf.write('chn_domain.list')
                 zf.write('LICENSE')
 
         except subprocess.CalledProcessError as e:
