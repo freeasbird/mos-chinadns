@@ -79,3 +79,7 @@ func (l *regExpDomainList) match(s string) bool {
 	}
 	return false
 }
+
+func (l *regExpDomainList) len() int {
+	return len(l.res)
+}

@@ -24,7 +24,9 @@
     -gen string
             [路径]生成一个json配置文件模板至该路径
     -dir string
-            [路径]变更程序的工作目录。默认使用程序所在的目录
+            [路径]变更程序的工作目录
+    -dir2exe
+            变更程序的工作目录至可执行文件的目录
 
     -v    调试模式，更多的log输出
 
@@ -39,7 +41,10 @@
         // [IP:端口] 本地服务器地址 建议:一个低延时但会被污染大陆服务器，用于解析大陆域名。
         "local_server": "223.5.5.5:53",     
 
-        // [IP:端口] 远程服务器地址 建议:一个无污染的服务器。用于解析非大陆域名。    
+        // [bool] 本地服务器是否屏蔽非A或AAAA请求。
+        "local_server_block_unusual_type": false,
+
+        // [IP:端口] 远程服务器地址 建议:一个无污染的服务器。用于解析非大陆域名。   
         "remote_server": "8.8.8.8:443", 
 
         // [URL] DoH服务器的url，如果填入，远程服务器将使用DoH协议
@@ -87,11 +92,17 @@
 
 ### 关于文件路径
 
-如遇到相对路径(`-c`和json配置文件中的`[路径]`)，mos-chinadns会以**程序所在目录**作为工作路径。除非启动程序时用`-dir`指明。
+建议使用`-dir2exe`选项将工作目录设置为程序所在目录，这样的话配置文件`-c`路径和配置文件中的路径可以是相对于程序的相对路径。
+
+如过附加`-dir2exe`后程序启动报错那就只能启动程序前手动`cd`或者使用绝对路径。
 
 ## 预设配置
 
-一份最新的中国大陆IPv4与IPv6的地址表`chn.list`已包含在release的zip包中。
+一份最新的中国大陆IPv4与IPv6的地址表`chn.list`已包含在release的zip包中。将预设配置复制并保存至`config.json`，确保`chn.list`, `config.json`和`mos-chinadns`在同一目录。
+
+用以下命令启动
+
+    mos-chinadns -c config.json -dir2exe
 
 ### 大陆通用 按IP分流
 
@@ -100,6 +111,7 @@
     {
         "bind_addr": "127.0.0.1:53",
         "local_server": "223.5.5.5:53",
+        "local_server_block_unusual_type": false,
         "remote_server": "208.67.222.222:443",
         "remote_server_url": "",
         "remote_server_skip_verify": false,
@@ -117,6 +129,7 @@
     {
         "bind_addr": "127.0.0.1:53",
         "local_server": "223.5.5.5:53",
+        "local_server_block_unusual_type": false,
         "remote_server": "8.8.8.8:443",
         "remote_server_url": "https://dns.google/dns-query",
         "remote_server_skip_verify": false,
@@ -129,13 +142,14 @@
 
 ### 单DoH模式
 
-- 国际：[Google DoH](https://developers.google.com/speed/public-dns/docs/doh)
+国际：[Google DoH](https://developers.google.com/speed/public-dns/docs/doh)
 
-建议ECS使解析更精确。[如何启用?](#关于edns-client-subnet-ecs)
+建议启用ECS使解析更精确。[如何启用?](#关于edns-client-subnet-ecs)
 
     {
         "bind_addr": "127.0.0.1:53",
         "local_server": "",
+        "local_server_block_unusual_type": false,
         "remote_server": "8.8.8.8:443",
         "remote_server_url": "https://dns.google/dns-query",
         "remote_server_skip_verify": false,

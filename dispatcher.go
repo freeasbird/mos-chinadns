@@ -36,20 +36,22 @@ import (
 )
 
 type dispatcher struct {
-	bindAddr               string
-	localServer            string
-	remoteServer           string
-	remoteServerDelayStart time.Duration
+	bindAddr                    string
+	localServer                 string
+	localServerBlockUnusualType bool
+	remoteServer                string
+	remoteServerDelayStart      time.Duration
 
-	localClient  dns.Client
-	remoteClient dns.Client
-
+	localClient     *dns.Client
+	remoteClient    *dns.Client
 	remoteDoHClient *dohClient.DohClient
 
 	localAllowedIPList     *ipv6.NetList
 	localBlockedIPList     *ipv6.NetList
 	localBlockedDomainList *regExpDomainList
 	remoteECS              *dns.EDNS0_SUBNET
+
+	entry *logrus.Entry
 }
 
 const (
@@ -90,76 +92,82 @@ func releaseTimer(timer *time.Timer) {
 	tp.Put(timer)
 }
 
-func initDispather(conf *Config) (*dispatcher, error) {
+func initDispather(conf *Config, entry *logrus.Entry) (*dispatcher, error) {
 	d := new(dispatcher)
+	d.entry = entry
 
 	if len(conf.BindAddr) == 0 {
-		return nil, errors.New("missing args: bind address")
-	}
-
-	if len(conf.LocalServer) == 0 && len(conf.RemoteServer) == 0 {
-		return nil, errors.New("missing args: both local server and remote server are empty")
+		return nil, errors.New("initDispather: missing args: bind address")
 	}
 	d.bindAddr = conf.BindAddr
-	d.localServer = conf.LocalServer
-	d.remoteServer = conf.RemoteServer
 
-	d.localClient = dns.Client{
-		Net:            "udp",
-		SingleInflight: false,
+	if len(conf.LocalServer) == 0 && len(conf.RemoteServer) == 0 {
+		return nil, errors.New("initDispather: missing args: both local server and remote server are empty")
 	}
-	d.remoteClient = dns.Client{
-		Net:            "udp",
-		SingleInflight: false,
+	if len(conf.LocalServer) != 0 {
+		d.localServer = conf.LocalServer
+		d.localClient = &dns.Client{
+			Net:            "udp",
+			SingleInflight: false,
+		}
+	}
+	d.localServerBlockUnusualType = conf.LocalServerBlockUnusualType
+	if len(conf.RemoteServer) != 0 {
+		d.remoteServer = conf.RemoteServer
+		if len(conf.RemoteServerURL) != 0 {
+			d.remoteDoHClient = dohClient.NewClient(conf.RemoteServerURL, conf.RemoteServer, conf.RemoteServerSkipVerify, 2048, dohQueryTimeout)
+		} else {
+			d.remoteClient = &dns.Client{
+				Net:            "udp",
+				SingleInflight: false,
+			}
+		}
 	}
 
 	if conf.RemoteServerDelayStart > 0 {
 		d.remoteServerDelayStart = time.Millisecond * time.Duration(conf.RemoteServerDelayStart)
 	}
 
-	if len(conf.RemoteServerURL) != 0 && len(conf.RemoteServer) != 0 {
-		logrus.Info("enable DoH")
-		d.remoteDoHClient = dohClient.NewClient(conf.RemoteServerURL, conf.RemoteServer, conf.RemoteServerSkipVerify, 2048, dohQueryTimeout)
-	}
-
 	if len(conf.LocalAllowedIPList) != 0 {
 		allowedIPList, err := ipv6.NewNetListFromFile(conf.LocalAllowedIPList)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load allowed ip file, %w", err)
+			return nil, fmt.Errorf("initDispather: failed to load allowed ip file, %w", err)
 		}
+		d.entry.Infof("initDispather: LocalAllowedIPList length %d", allowedIPList.Len())
 		d.localAllowedIPList = allowedIPList
 	}
 
 	if len(conf.LocalBlockedIPList) != 0 {
 		blockIPList, err := ipv6.NewNetListFromFile(conf.LocalBlockedIPList)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load block ip file, %w", err)
+			return nil, fmt.Errorf("initDispather: failed to load block ip file, %w", err)
 		}
+		d.entry.Infof("initDispather: LocalBlockedIPList length %d", blockIPList.Len())
 		d.localBlockedIPList = blockIPList
 	}
 
 	if len(conf.LocalBlockedDomainList) != 0 {
 		reList, err := loadRegExpDomainListFormFile(conf.LocalBlockedDomainList)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load block domain file, %w", err)
+			return nil, fmt.Errorf("initDispather: failed to load block domain file, %w", err)
 		}
+		d.entry.Infof("initDispather: LocalBlockedDomainList length %d", reList.len())
 		d.localBlockedDomainList = reList
 	}
 
 	if len(conf.RemoteECSSubnet) != 0 {
-
 		strs := strings.SplitN(conf.RemoteECSSubnet, "/", 2)
 		if len(strs) != 2 {
-			return nil, fmt.Errorf("invalid ECS address [%s], not a CIDR notation", conf.RemoteECSSubnet)
+			return nil, fmt.Errorf("initDispather: invalid ECS address [%s], not a CIDR notation", conf.RemoteECSSubnet)
 		}
 
 		ip := net.ParseIP(strs[0])
 		if ip == nil {
-			return nil, fmt.Errorf("invalid ECS address [%s], invalid ip", conf.RemoteECSSubnet)
+			return nil, fmt.Errorf("initDispather: invalid ECS address [%s], invalid ip", conf.RemoteECSSubnet)
 		}
 		sourceNetmask, err := strconv.Atoi(strs[1])
 		if err != nil || sourceNetmask > 128 || sourceNetmask < 0 {
-			return nil, fmt.Errorf("invalid ECS address [%s], invalid net mask", conf.RemoteECSSubnet)
+			return nil, fmt.Errorf("initDispather: invalid ECS address [%s], invalid net mask", conf.RemoteECSSubnet)
 		}
 
 		ednsSubnet := new(dns.EDNS0_SUBNET)
@@ -176,7 +184,7 @@ func initDispather(conf *Config) (*dispatcher, error) {
 				ednsSubnet.SourceNetmask = uint8(sourceNetmask)
 				ip = ip6
 			} else {
-				return nil, fmt.Errorf("invalid ECS address [%s], it's not an ipv4 or ipv6 address", conf.RemoteECSSubnet)
+				return nil, fmt.Errorf("initDispather: invalid ECS address [%s], it's not an ipv4 or ipv6 address", conf.RemoteECSSubnet)
 			}
 		}
 
@@ -184,6 +192,7 @@ func initDispather(conf *Config) (*dispatcher, error) {
 		ednsSubnet.Address = ip
 		ednsSubnet.SourceScope = 0
 		d.remoteECS = ednsSubnet
+		d.entry.Info("initDispather: ECS enabled")
 	}
 
 	return d, nil
@@ -205,7 +214,11 @@ func isUnusualType(q *dns.Msg) bool {
 	return q.Opcode != dns.OpcodeQuery || len(q.Question) != 1 || q.Question[0].Qclass != dns.ClassINET || (q.Question[0].Qtype != dns.TypeA && q.Question[0].Qtype != dns.TypeAAAA)
 }
 
+// check if q has a blocked QName. If q and reList is nil, return false.
 func isBlockedDomain(q *dns.Msg, reList *regExpDomainList) bool {
+	if reList == nil || q == nil {
+		return false
+	}
 	for i := range q.Question {
 		if reList.match(q.Question[i].Name) {
 			return true
@@ -214,25 +227,27 @@ func isBlockedDomain(q *dns.Msg, reList *regExpDomainList) bool {
 	return false
 }
 
+func (d *dispatcher) hasRemote() bool {
+	return d.remoteClient != nil || d.remoteDoHClient != nil
+}
+
+func (d *dispatcher) hasLocal() bool {
+	return d.localClient != nil
+}
+
 // serveDNS: r might be nil
 func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
-	requestLogger := logrus.WithFields(logrus.Fields{
+	requestLogger := d.entry.WithFields(logrus.Fields{
 		"id":       q.Id,
 		"question": q.Question,
 	})
 
+	var doLocal, doRemote bool
+	doLocal = d.hasLocal() && !isBlockedDomain(q, d.localBlockedDomainList) && (!isUnusualType(q) || !d.localServerBlockUnusualType)
+	doRemote = d.hasRemote()
+
 	ctx, cancelQuery := context.WithTimeout(context.Background(), queryTimeout)
 	defer cancelQuery()
-
-	if isUnusualType(q) || isBlockedDomain(q, d.localBlockedDomainList) {
-		r, rtt, err := d.queryRemote(ctx, q)
-		if err != nil {
-			requestLogger.Warnf("remote server failed with err: %v", err)
-			return nil
-		}
-		requestLogger.Debugf("get reply remote local server, rtt: %s", rtt)
-		return r
-	}
 
 	resChan := make(chan *dns.Msg, 1)
 	wgChan := make(chan struct{}, 0)
@@ -241,23 +256,23 @@ func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
 	var localServerFailed chan struct{}
 
 	// local
-	if len(d.localServer) != 0 {
+	if doLocal {
 		localServerDone = make(chan struct{})
 		localServerFailed = make(chan struct{})
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			requestLogger.Debug("query local server")
+			requestLogger.Debug("serveDNS: query local server")
 			res, rtt, err := d.queryLocal(ctx, q)
 			if err != nil {
-				requestLogger.Warnf("local server failed with err: %v", err)
+				requestLogger.Warnf("serveDNS: local server failed: %v", err)
 				close(localServerFailed)
 				return
 			}
 
-			requestLogger.Debugf("get reply from local server, rtt: %s", rtt)
+			requestLogger.Debugf("serveDNS: get reply from local, rtt: %dms", rtt.Milliseconds())
 			if d.dropLoaclRes(res, requestLogger) {
-				requestLogger.Debug("local result droped")
+				requestLogger.Debug("serveDNS: local result droped")
 				close(localServerFailed)
 				return
 			}
@@ -267,16 +282,17 @@ func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
 			default:
 			}
 			close(localServerDone)
+			requestLogger.Debug("serveDNS: local result accepted")
 		}()
 	}
 
 	// remote
-	if len(d.remoteServer) != 0 {
+	if doRemote {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
-			if len(d.localServer) != 0 && d.remoteServerDelayStart > 0 {
+			if doLocal && d.remoteServerDelayStart > 0 {
 				timer := getTimer(d.remoteServerDelayStart)
 				defer releaseTimer(timer)
 				select {
@@ -287,13 +303,13 @@ func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
 				}
 			}
 
-			requestLogger.Debug("query remote server")
+			requestLogger.Debug("serveDNS: query remote server")
 			res, rtt, err := d.queryRemote(ctx, q)
 			if err != nil {
-				requestLogger.Warnf("remote server failed with err: %v", err)
+				requestLogger.Warnf("serveDNS: remote server failed: %v", err)
 				return
 			}
-			requestLogger.Debugf("get reply from remote server, rtt: %s", rtt)
+			requestLogger.Debugf("serveDNS: get reply from remote, rtt: %dms", rtt.Milliseconds())
 
 			select {
 			case resChan <- res:
@@ -317,7 +333,7 @@ func (d *dispatcher) serveDNS(q *dns.Msg) *dns.Msg {
 		r.Rcode = dns.RcodeServerFailure
 		return r
 	case <-ctx.Done():
-		requestLogger.Warnf("query failed %v", ctx.Err())
+		requestLogger.Warnf("serveDNS: query failed %v", ctx.Err())
 		return nil
 	}
 }
@@ -329,27 +345,7 @@ func (d *dispatcher) queryLocal(ctx context.Context, q *dns.Msg) (*dns.Msg, time
 //queryRemote WARNING: to save memory we may modify q directly.
 func (d *dispatcher) queryRemote(ctx context.Context, q *dns.Msg) (*dns.Msg, time.Duration, error) {
 	if d.remoteECS != nil {
-		opt := q.IsEdns0()
-		if opt == nil { // we need a new opt
-			o := new(dns.OPT)
-			o.SetUDPSize(2048) // TODO: is this big enough?
-			o.Hdr.Name = "."
-			o.Hdr.Rrtype = dns.TypeOPT
-			o.Option = []dns.EDNS0{d.remoteECS}
-			q.Extra = append(q.Extra, o)
-		} else {
-			var hasECS bool = false // check if msg q already has a ECS section
-			for o := range opt.Option {
-				if opt.Option[o].Option() == dns.EDNS0SUBNET {
-					hasECS = true
-					break
-				}
-			}
-
-			if !hasECS {
-				opt.Option = append(opt.Option, d.remoteECS)
-			}
-		}
+		appendECSIfNotExist(q, d.remoteECS)
 	}
 
 	if d.remoteDoHClient != nil {
@@ -361,65 +357,95 @@ func (d *dispatcher) queryRemote(ctx context.Context, q *dns.Msg) (*dns.Msg, tim
 	return d.remoteClient.ExchangeContext(ctx, q, d.remoteServer)
 }
 
+// both q and ecs shouldn't be nil
+func appendECSIfNotExist(q *dns.Msg, ecs *dns.EDNS0_SUBNET) {
+	opt := q.IsEdns0()
+	if opt == nil { // we need a new opt
+		o := new(dns.OPT)
+		o.SetUDPSize(2048) // TODO: is this big enough?
+		o.Hdr.Name = "."
+		o.Hdr.Rrtype = dns.TypeOPT
+		o.Option = []dns.EDNS0{ecs}
+		q.Extra = append(q.Extra, o)
+	} else {
+		var hasECS bool = false // check if msg q already has a ECS section
+		for o := range opt.Option {
+			if opt.Option[o].Option() == dns.EDNS0SUBNET {
+				hasECS = true
+				break
+			}
+		}
+
+		if !hasECS {
+			opt.Option = append(opt.Option, ecs)
+		}
+	}
+}
+
+// check if local result should be droped, res can be nil.
 func (d *dispatcher) dropLoaclRes(res *dns.Msg, requestLogger *logrus.Entry) bool {
 	if res == nil {
-		requestLogger.Debug("local result is nil")
+		requestLogger.Debug("dropLoaclRes: result is nil")
 		return true
 	}
 
 	if res.Rcode != dns.RcodeSuccess {
-		requestLogger.Debug("local result Rcode != 0")
+		requestLogger.Debug("dropLoaclRes: result Rcode != 0")
 		return true
 	}
 
 	if len(res.Answer) == 0 {
-		requestLogger.Debug("local result has empty answer")
+		requestLogger.Debug("dropLoaclRes: result has empty answer")
 		return true
 	}
 
-	if anwsersMatchNetList(res.Answer, d.localBlockedIPList, requestLogger) {
-		requestLogger.Debug("local result is blocked")
+	if isUnusualType(res) && !d.localServerBlockUnusualType {
+		requestLogger.Debug("dropLoaclRes: result is an unusual type")
+		return false
+	}
+
+	if d.localBlockedIPList != nil && anwsersMatchNetList(res.Answer, d.localBlockedIPList, requestLogger) {
+		requestLogger.Debug("dropLoaclRes: result IP is blocked")
 		return true
 	}
 
 	if d.localAllowedIPList != nil {
 		if anwsersMatchNetList(res.Answer, d.localAllowedIPList, requestLogger) {
-			requestLogger.Debug("local result is alloweded")
+			requestLogger.Debug("dropLoaclRes: result IP is allowed")
 			return false
 		}
-		requestLogger.Debug("local result can not be alloweded")
+		requestLogger.Debug("dropLoaclRes: result IP is not allowed")
 		return true
 	}
 
+	// no b/w list, don't drop
 	return false
 }
 
+// list can not be nil
 func anwsersMatchNetList(anwser []dns.RR, list *ipv6.NetList, requestLogger *logrus.Entry) bool {
-	if list == nil {
-		return false
-	}
-
+	var matched bool
 	for i := range anwser {
+		var ip ipv6.IPv6
+		var err error
 		switch tmp := anwser[i].(type) {
 		case *dns.A:
-			ipv6, err := ipv6.Conv(tmp.A)
-			if err != nil {
-				continue
-			}
-			if list.Contains(ipv6) {
-				return true
-			}
+			ip, err = ipv6.Conv(tmp.A)
 		case *dns.AAAA:
-			ipv6, err := ipv6.Conv(tmp.AAAA)
-			if err != nil {
-				continue
-			}
-			if list.Contains(ipv6) {
-				return true
-			}
+			ip, err = ipv6.Conv(tmp.AAAA)
 		default:
-			requestLogger.Debugf("unknown answer section [%s]", anwser[i])
+			continue
 		}
+		if err != nil {
+			continue
+		}
+		matched = true
+		if list.Contains(ip) {
+			return true
+		}
+	}
+	if !matched {
+		requestLogger.Debug("anwsersMatchNetList: answer section has no A or AAAA record")
 	}
 	return false
 }

@@ -31,59 +31,76 @@ var (
 	configPath  = flag.String("c", "", "[path] load config from file")
 	genConfigTo = flag.String("gen", "", "[path] generate a config template here")
 
-	dir     = flag.String("dir", "", "[path] change working directory to here")
+	dir                 = flag.String("dir", "", "[path] change working directory to here")
+	dirFollowExecutable = flag.Bool("dir2exe", false, "change working directory to the executable that started the current process")
+
 	verbose = flag.Bool("v", false, "more log")
 )
 
 func main() {
 	flag.Parse()
 
+	logger := logrus.New()
 	if *verbose {
-		logrus.SetLevel(logrus.DebugLevel)
+		logger.SetLevel(logrus.DebugLevel)
 	} else {
-		logrus.SetLevel(logrus.ErrorLevel)
+		logger.SetLevel(logrus.InfoLevel)
 	}
-
+	entry := logrus.NewEntry(logger)
 	//gen config
 	if len(*genConfigTo) != 0 {
 		err := genJSONConfig(*genConfigTo)
 		if err != nil {
-			logrus.Errorf("can not generate config template, %v", err)
+			entry.Errorf("can not generate config template, %v", err)
 		} else {
-			logrus.Print("config template generated")
+			entry.Print("config template generated")
 		}
 		return
 	}
 
-	//change working dir
-	if *dir == "" {
-		*dir = filepath.Dir(os.Args[0])
+	// try to change working dir to os.Executable() or *dir
+	var wd string
+	if *dirFollowExecutable {
+		ex, err := os.Executable()
+		if err != nil {
+			entry.Fatalf("get executable path: %v", err)
+		}
+		wd = filepath.Dir(ex)
+	} else {
+		if len(*dir) != 0 {
+			wd = *dir
+		}
 	}
-	dir, err := filepath.Abs(*dir)
-	if err != nil {
-		logrus.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		logrus.Fatal(err)
+	if len(wd) != 0 {
+		err := os.Chdir(wd)
+		if err != nil {
+			entry.Fatalf("changes the current working directory to %s: %v", wd, err)
+		}
+		entry.Infof("changes the current working directory to %s", wd)
 	}
 
 	//checking
 
 	if len(*configPath) == 0 {
-		logrus.Fatal("need a config file")
+		entry.Fatal("need a config file")
 	}
 
-	d, err := initDispather(getConfigOrFatal())
+	c, err := loadJSONConfig(*configPath)
 	if err != nil {
-		logrus.Fatal(err)
+		entry.Fatalf("can not load config file, %v", err)
+	}
+
+	d, err := initDispather(c, entry)
+	if err != nil {
+		entry.Fatal(err)
 	}
 
 	go func() {
-		logrus.Print("server started")
+		entry.Info("server started")
 		if err := d.ListenAndServe(); err != nil {
-			logrus.Fatalf("server exited with err: %v", err)
+			entry.Fatalf("server exited with err: %v", err)
 		} else {
-			logrus.Print("server exited")
+			entry.Info("server exited")
 			os.Exit(0)
 		}
 	}()
@@ -92,14 +109,6 @@ func main() {
 	osSignals := make(chan os.Signal, 1)
 	signal.Notify(osSignals, os.Interrupt, os.Kill, syscall.SIGTERM)
 	s := <-osSignals
-	logrus.Printf("exiting: signal: %v", s)
+	entry.Infof("exiting: signal: %v", s)
 	os.Exit(0)
-}
-
-func getConfigOrFatal() *Config {
-	c, err := loadJSONConfig(*configPath)
-	if err != nil {
-		logrus.Fatalf("can not load config file, %v", err)
-	}
-	return c
 }

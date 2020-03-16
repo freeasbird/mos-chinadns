@@ -57,40 +57,49 @@ func (s *vServer) ServeDNS(w dns.ResponseWriter, q *dns.Msg) {
 	w.WriteMsg(r)
 }
 
-func initTestDispather(lLatency, rLatency time.Duration, lIP, rIP net.IP, allow, block string) (*dispatcher, error) {
-	d := new(dispatcher)
+func initTestDispatherAndServer(lLatency, rLatency time.Duration, lIP, rIP net.IP, allow, block string) (*dispatcher, func(), error) {
+	c := Config{}
 
 	//local
 	localServerUDPConn, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	d.localServer = localServerUDPConn.LocalAddr().String()
+	c.LocalServer = localServerUDPConn.LocalAddr().String()
 	ls := dns.Server{PacketConn: localServerUDPConn, Handler: &vServer{ip: lIP, latency: lLatency}}
 	go ls.ActivateAndServe()
 
 	//remote
 	remoteServerUDPConn, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	d.remoteServer = remoteServerUDPConn.LocalAddr().String()
+	c.RemoteServer = remoteServerUDPConn.LocalAddr().String()
 	rs := dns.Server{PacketConn: remoteServerUDPConn, Handler: &vServer{ip: rIP, latency: rLatency}}
 	go rs.ActivateAndServe()
 
+	c.BindAddr = "127.0.0.1:0"
+	d, err := initDispather(&c, logrus.NewEntry(logrus.StandardLogger()))
+	if err != nil {
+		return nil, nil, err
+	}
+
 	allowedIP, err := ipv6.NewNetListFromReader(bytes.NewReader([]byte(allow)))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	d.localAllowedIPList = allowedIP
 
 	blockedIP, err := ipv6.NewNetListFromReader(bytes.NewReader([]byte(block)))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	d.localBlockedIPList = blockedIP
 
-	return d, nil
+	return d, func() {
+		ls.Shutdown()
+		rs.Shutdown()
+	}, nil
 }
 
 func Test_dispatcher_ServeDNS_FastServer(t *testing.T) {
@@ -100,10 +109,11 @@ func Test_dispatcher_ServeDNS_FastServer(t *testing.T) {
 	rIP := net.IPv4(1, 1, 1, 2)
 
 	test := func(ll, rl time.Duration, want net.IP) {
-		d, err := initTestDispather(ll, rl, lIP, rIP, "0.0.0.0/0", "")
+		d, closeServer, err := initTestDispatherAndServer(ll, rl, lIP, rIP, "0.0.0.0/0", "")
 		if err != nil {
 			t.Fatalf("init dispather, %v", err)
 		}
+		defer closeServer()
 
 		q := new(dns.Msg)
 		q.SetQuestion(dns.Fqdn("example.com"), dns.TypeA)
@@ -135,10 +145,11 @@ func Test_dispatcher_ServeDNS_AllowedIP(t *testing.T) {
 	rIP := net.IPv4(1, 1, 1, 2)
 
 	test := func(ll, rl time.Duration, lIP, want net.IP) {
-		d, err := initTestDispather(ll, rl, lIP, rIP, allowedList, "")
+		d, closeServer, err := initTestDispatherAndServer(ll, rl, lIP, rIP, allowedList, "")
 		if err != nil {
 			t.Fatalf("init dispather, %v", err)
 		}
+		defer closeServer()
 
 		q := new(dns.Msg)
 		q.SetQuestion(dns.Fqdn("example.com"), dns.TypeA)
@@ -170,10 +181,11 @@ func Test_dispatcher_ServeDNS_BlockedIP(t *testing.T) {
 	rIP := net.IPv4(1, 1, 1, 2)
 
 	test := func(ll, rl time.Duration, lIP, want net.IP) {
-		d, err := initTestDispather(ll, rl, lIP, rIP, allowedList, blockedList)
+		d, closeServer, err := initTestDispatherAndServer(ll, rl, lIP, rIP, allowedList, blockedList)
 		if err != nil {
 			t.Fatalf("init dispather, %v", err)
 		}
+		defer closeServer()
 
 		q := new(dns.Msg)
 		q.SetQuestion(dns.Fqdn("example.com"), dns.TypeA)
